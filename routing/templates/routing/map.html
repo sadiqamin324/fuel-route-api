@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Fuel Route Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    #controls { padding: 10px; background: #f3f3f3; }
+    #map { height: calc(100vh - 56px); }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <input id="start-input" value="Los Angeles, CA">
+    <input id="finish-input" value="Chicago, IL">
+    <button id="plan-button">Plan route</button>
+    <span id="summary"></span>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([39.5, -98.35], 4);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const routeLayers = L.layerGroup().addTo(map);
+    const summaryText = document.getElementById('summary');
+
+    document.getElementById('plan-button').addEventListener('click', async () => {
+      summaryText.textContent = 'Planning...';
+
+      const response = await fetch('/api/route/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start: document.getElementById('start-input').value,
+          finish: document.getElementById('finish-input').value,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        summaryText.textContent = result.error;
+        return;
+      }
+
+      routeLayers.clearLayers();
+      const routeLine = L.geoJSON(result.route).addTo(routeLayers);
+
+      result.fuel_stops.forEach(stop => {
+        L.marker([stop.latitude, stop.longitude])
+          .bindPopup(
+            `${stop.name}, ${stop.city} ${stop.state}<br>` +
+            `Mile ${stop.mile_marker}: ${stop.gallons_bought} gal at $${stop.price_per_gallon} = $${stop.cost}`
+          )
+          .addTo(routeLayers);
+      });
+
+      map.fitBounds(routeLine.getBounds());
+      summaryText.textContent =
+        `${result.total_distance_miles} miles | ${result.fuel_stops.length} stops | ` +
+        `total fuel cost $${result.total_fuel_cost}`;
+    });
+  </script>
+</body>
+</html>
